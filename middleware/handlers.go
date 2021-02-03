@@ -5,17 +5,27 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json" // package to encode and decode the json into struct and vice versa
+	"errors"
 	"fmt"
 	"github.com/joho/godotenv" // package used to read the .env file
 	_ "github.com/lib/pq"      // postgres golang driver
 	"log"
+	"math"
 	"net/http" // used to access the request and response object of the api
 	"os"       // used to read the environment variable
+	"time"
 )
 
 //response format
-type response struct {
+type responseCredit struct {
 	ID      uint64 `json:"id,omitempty"`
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+}
+
+//response format
+type responseDebit struct {
+	Success bool   `json:"success"`
 	Message string `json:"message,omitempty"`
 }
 
@@ -42,37 +52,55 @@ func createConnection() *sql.DB {
 		panic(err)
 	}
 
-	fmt.Println("Successfully connected!")
+	fmt.Println("\nSuccessfully connected!")
 	// return the connection
 	return db
 }
 
 // CreateUserCredit create a user-credit in the postgres db
 func CreateUserCredit(w http.ResponseWriter, r *http.Request) {
-	// set the header to content type x-www-form-urlencoded
 	// Allow all origin to handle cors issue
-	w.Header().Set("Context-Type", "application/x-www-form-urlencoded")
+	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	w.Header().Set("Content-Type", "application/json")
 
 	// create an empty user of type models.User
 	var userCredit models.UserCredit
+	var res responseCredit
 
 	// decode the json request to user
 	err := json.NewDecoder(r.Body).Decode(&userCredit)
 
 	if err != nil {
-		log.Fatalf("Unable to decode the request body.  %v", err)
+		res = responseCredit{
+			ID:      0,
+			Success: false,
+			Message: fmt.Sprint("Unable to process the user's credit. ", err.Error()),
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(res)
+		return
 	}
 
 	// call insert user function and pass the user
-	insertID := insertUserCredit(userCredit)
+	insertID, err := insertUserCredit(userCredit)
+
+	if err != nil {
+		res = responseCredit{
+			ID:      insertID,
+			Success: false,
+			Message: fmt.Sprint("Unable to process the user's credit. ", err.Error()),
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(res)
+		return
+	}
 
 	// format a response object
-	res := response{
+	res = responseCredit{
 		ID:      insertID,
+		Success: true,
 		Message: "User credit created successfully",
 	}
 
@@ -80,27 +108,57 @@ func CreateUserCredit(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(res)
 }
 
-// GetAllUser will return all the users
-func GetAllUser(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Context-Type", "application/x-www-form-urlencoded")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+//Process debit transaction for a user and log same in the activity table for future reporting
+func CreateUserDebit(w http.ResponseWriter, r *http.Request) {
+	// Allow all origin to handle cors issue
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
-	// get all the users in the db
-	users, err := getAllUsers()
+	// create an empty user of type models.User
+	var userDebit models.UserDebit
+
+	var res responseDebit
+
+	// decode the json request to user
+	err := json.NewDecoder(r.Body).Decode(&userDebit)
 
 	if err != nil {
-		log.Fatalf("Unable to get all user. %v", err)
+		res = responseDebit{
+			Success: false,
+			Message: fmt.Sprint("Unable to process the user's debit. ", err.Error()),
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(res)
+		return
 	}
 
-	// send all the users as response
-	json.NewEncoder(w).Encode(users)
+	// call insert debit function and pass the user
+	err = insertUserDebit(userDebit)
+
+	if err != nil {
+		res = responseDebit{
+			Success: false,
+			Message: fmt.Sprint("Unable to process user's debit request. ", err.Error()),
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(res)
+		return
+	}
+
+	// format a response object
+	res = responseDebit{
+		Success: true,
+		Message: "User debit has been processed successfully",
+	}
+	// send the response
+	json.NewEncoder(w).Encode(res)
 }
 
-//------------------------- handler functions ----------------
+//------------------------- handler functions ---------------------
 // inserts credit in the DB
-func insertUserCredit(userCredit models.UserCredit) uint64 {
-
+func insertUserCredit(userCredit models.UserCredit) (uint64, error) {
 	// create the postgres db connection
 	db := createConnection()
 
@@ -122,75 +180,219 @@ func insertUserCredit(userCredit models.UserCredit) uint64 {
 	ctx := context.Background()
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		log.Fatal(err)
+		return 0, errors.New(err.Error())
 	}
 	err = tx.QueryRow(userCreditSqlStatement, userCredit.UserId, userCredit.Amount, userCredit.TransactionType,
 		userCredit.Priority, userCredit.Expiry).Scan(&userCreditId)
 
 	if err != nil {
 		tx.Rollback()
-		log.Fatal(err)
-		return 0
+		return 0, errors.New(err.Error())
 	}
 
 	// The next query is handled similarly
 	_, err = tx.ExecContext(ctx, activitySqlStatement, userCredit.UserId, true, userCredit.Amount, userCreditId)
 	if err != nil {
 		tx.Rollback()
-		log.Fatal(err)
-		return 0
+		return 0, errors.New(err.Error())
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		log.Fatal(err)
+		return 0, errors.New(err.Error())
 	}
 
 	fmt.Printf("Inserted a single record with id: %v and logged activity", userCreditId)
 
 	// return the inserted id
-	return userCreditId
+	return userCreditId, err
 }
 
-// get one user from the DB by its userid
-func getAllUsers() ([]models.User, error) {
+//process debit and insert transaction in the activity table
+func insertUserDebit(userDebit models.UserDebit) error {
+	if userDebit.Amount <= 0.0 {
+		return errors.New("please provide debit amount greater than zero")
+	}
 	// create the postgres db connection
 	db := createConnection()
 
 	// close the db connection
 	defer db.Close()
 
-	var users []models.User
+	var rollbackError error
+	// create the insert sql query
+	// returning userid will return the id of the inserted user
+	userCreditSqlStatement := `SELECT userid, usercreditid, amount, transactiontype, priority, expiry FROM tbl_UserCredits WHERE userid=$1 AND isexpired=false AND amount>0 ORDER BY priority DESC`
 
-	// create the select sql query
-	sqlStatement := `SELECT userid,fname,lname,email,dob,mobile FROM tbl_Users`
-
-	// execute the sql statement
-	rows, err := db.Query(sqlStatement)
+	// Create a new context, and begin a transaction
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	var rows *sql.Rows
+	rows, err = tx.Query(userCreditSqlStatement, userDebit.UserId)
 
 	if err != nil {
-		log.Fatalf("Unable to execute the query. %v", err)
+		if rollbackError = tx.Rollback(); rollbackError != nil {
+			return errors.New(fmt.Sprint("unable to rollback. ", rollbackError.Error()))
+		}
+		return errors.New(err.Error())
 	}
-
-	// close the statement
 	defer rows.Close()
 
-	// iterate over the rows
+	//create a slice to keep track of available credit(s) to consume
+	m := make([]models.UserCredit, 0)
+	var hasExpiredCredits bool
+
 	for rows.Next() {
-		var user models.User
-
-		// unmarshal the row object to user
-		err = rows.Scan(&user.UserId, &user.FirstName, &user.LastName, &user.Email, &user.DOB, &user.Mobile)
-
-		if err != nil {
-			log.Fatalf("Unable to scan the row. %v", err)
+		var credit models.UserCredit
+		if err := rows.Scan(&credit.UserId, &credit.UserCreditId, &credit.Amount, &credit.TransactionType, &credit.Priority, &credit.Expiry); err != nil {
+			if rollbackError = tx.Rollback(); rollbackError != nil {
+				return errors.New(fmt.Sprint("unable to rollback. ", rollbackError.Error()))
+			}
+			return errors.New(err.Error())
 		}
-
-		// append the user in the users slice
-		users = append(users, user)
-
+		//check for expiry of the credit
+		var t time.Time
+		t, err = time.Parse(time.RFC3339, credit.Expiry)
+		if err != nil {
+			if rollbackError = tx.Rollback(); rollbackError != nil {
+				return errors.New(fmt.Sprint("unable to rollback. ", rollbackError.Error()))
+			}
+			return errors.New(err.Error())
+		}
+		//if the expiry on credit is before or equal to current datetime, then ignore it
+		if t.Before(time.Now()) || t.Equal(time.Now()) {
+			hasExpiredCredits = true
+			continue
+		}
+		m = append(m, credit)
 	}
 
-	// return empty user on error
-	return users, err
+	if len(m) == 0 && hasExpiredCredits {
+		if rollbackError = tx.Rollback(); rollbackError != nil {
+			return errors.New(fmt.Sprint("unable to rollback. ", rollbackError.Error()))
+		}
+		return errors.New("all the credits have expired for the given user, cannot process further debits. please allocate new credit(s) for the user to resolve this issue")
+	}
+
+	if len(m) == 0 {
+		if rollbackError = tx.Rollback(); rollbackError != nil {
+			return errors.New(fmt.Sprint("unable to rollback. ", rollbackError.Error()))
+		}
+		return errors.New("trying to make a debit call before any credits are transacted for the given user. please allocate new credit(s) for the user to resolve this issue")
+	}
+
+	fmt.Println("Debug | insertUserDebit | data in the slice: ", m)
+
+	canConsume, credits := canConsumeCredits(userDebit, m)
+
+	fmt.Println("Debug | insertUserDebit | can consume: ", canConsume)
+	fmt.Println("Debug | insertUserDebit | credits: ", credits)
+
+	if !canConsume {
+		if rollbackError = tx.Rollback(); rollbackError != nil {
+			return errors.New(fmt.Sprint("unable to rollback. ", rollbackError.Error()))
+		}
+		return errors.New("cannot debit more amount than currently present as credit for the given user. please either create more credits or reduce the debit amount to resolve this issue")
+	}
+
+	var stmt *sql.Stmt
+	stmt, err = tx.PrepareContext(ctx, `UPDATE tbl_UserCredits SET amount=$1, updated=(NOW() AT TIME ZONE 'UTC') WHERE userid=$2 AND usercreditid=$3`)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	defer stmt.Close()
+
+	for _, credit := range credits {
+		if _, err = stmt.ExecContext(ctx, credit.Amount, credit.UserId, credit.UserCreditId); err != nil {
+			if rollbackError = tx.Rollback(); rollbackError != nil {
+				return errors.New(fmt.Sprint("unable to rollback. ", rollbackError.Error()))
+			}
+			return errors.New(err.Error())
+		}
+	}
+
+	stmt, err = tx.PrepareContext(ctx, `INSERT INTO tbl_Activity(userid, iscredit, amount, usercreditid) VALUES($1, $2, $3, $4)`)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	defer stmt.Close()
+
+	for _, credit := range credits {
+		if credit.Consumed == 0.0 {
+			continue
+		}
+		if _, err = stmt.ExecContext(ctx, credit.UserId, false, credit.Consumed, credit.UserCreditId); err != nil {
+			if rollbackError = tx.Rollback(); rollbackError != nil {
+				return errors.New(fmt.Sprint("unable to rollback. ", rollbackError.Error()))
+			}
+			return errors.New(err.Error())
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return errors.New(err.Error())
+	}
+
+	fmt.Printf("Debit request processed successfully")
+
+	return err
+}
+
+func canConsumeCredits(userDebit models.UserDebit, m []models.UserCredit) (bool, []models.UserCredit) {
+	//processedCredits := make([]models.UserCredit, 0)
+	debitAmount := userDebit.Amount
+	totalAmount := getTotalAmountInUserCredits(m)
+
+	remainingAmount := userDebit.Amount
+
+	if debitAmount > totalAmount {
+		return false, m
+	}
+	//loop to consume credit amount(when one or more credits are involved)
+	/*
+	 * It handles three cases:
+	 *   (i) First credit in map can fulfill debit amount
+	 *   (ii) All credits in map can fulfill debit amount
+	 *   (iii) Any credit in between is consumed partially to achieve debit amount
+	 */
+	for i, credit := range m {
+		//credit.Processed = true
+		//consume fully
+		if remainingAmount >= credit.Amount {
+			remainingAmount = remainingAmount - credit.Amount
+			credit.Consumed = credit.Amount
+			credit.Amount = 0.0
+			m[i] = credit
+
+			//check for case(ii)
+			if remainingAmount == 0 {
+				break
+			}
+		} else {
+			//this will be the last credit that needs to consumed partially, so consume and break from loop
+			credit.Amount = math.Abs(remainingAmount - credit.Amount)
+			credit.Consumed = remainingAmount
+			m[i] = credit
+			break
+		}
+	}
+	//pass on processed credits only
+	/*for _, credit := range m {
+		if credit.Processed {
+			processedCredits = append(processedCredits, credit)
+		}
+	}*/
+	return true, m
+}
+
+func getTotalAmountInUserCredits(m []models.UserCredit) float64 {
+	totalAmount := 0.0
+	for _, credit := range m {
+		totalAmount = totalAmount + credit.Amount
+	}
+	return totalAmount
 }

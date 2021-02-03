@@ -10,4 +10,6 @@ type UserCredit struct {
 	Priority        int     `json:"priority"`
 	Expiry          string  `json:"expiry"`
 	IsExpired       bool    `json:"isexpired"`
+	Processed       bool
+	Consumed        float64
 }
