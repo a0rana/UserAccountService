@@ -71,6 +71,11 @@ func GetAllTransactions(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	var res responseActivity
 
+	limit := r.FormValue("limit")
+	afterId := r.FormValue("afterid")
+
+	fmt.Println(limit, afterId)
+
 	// decode the json request to user
 	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
@@ -84,7 +89,7 @@ func GetAllTransactions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// get all the activities in the db
-	activities, err := getAllActivities(user)
+	activities, err := getAllActivities(user, limit, afterId)
 
 	if err != nil {
 		res = responseActivity{
@@ -202,7 +207,7 @@ func CreateUserDebit(w http.ResponseWriter, r *http.Request) {
 //------------------------- handler functions ---------------------
 
 //get all activities for the user
-func getAllActivities(user models.User) ([]models.UserActivity, error) {
+func getAllActivities(user models.User, limit string, afterId string) ([]models.UserActivity, error) {
 	// create the postgres db connection
 	db := createConnection()
 
@@ -210,10 +215,20 @@ func getAllActivities(user models.User) ([]models.UserActivity, error) {
 	defer db.Close()
 
 	var activities []models.UserActivity
+	var sqlStatement string
 
-	// create the select sql query
-	sqlStatement := `SELECT userid, created, iscredit, amount FROM tbl_Activity WHERE userid=$1 ORDER BY iscredit DESC, created ASC`
-
+	if len(afterId) == 0 && len(limit) == 0 {
+		sqlStatement = `SELECT userid, created, iscredit, amount FROM tbl_Activity WHERE userid=$1 ORDER BY iscredit DESC, created ASC`
+	}
+	if len(afterId) > 0 && len(limit) > 0 {
+		sqlStatement = fmt.Sprint(`SELECT userid, created, iscredit, amount FROM tbl_Activity WHERE userid=$1 AND tranid > `, afterId, ` ORDER BY iscredit DESC, created ASC LIMIT `, limit)
+	}
+	if len(afterId) > 0 && len(limit) == 0 {
+		sqlStatement = fmt.Sprint(`SELECT userid, created, iscredit, amount FROM tbl_Activity WHERE userid=$1 AND tranid > `, afterId, ` ORDER BY iscredit DESC, created ASC`)
+	}
+	if len(limit) > 0 && len(afterId) == 0 {
+		sqlStatement = fmt.Sprint(`SELECT userid, created, iscredit, amount FROM tbl_Activity WHERE userid=$1 ORDER BY iscredit DESC, created ASC LIMIT `, limit)
+	}
 	// execute the sql statement
 	rows, err := db.Query(sqlStatement, user.UserId)
 
