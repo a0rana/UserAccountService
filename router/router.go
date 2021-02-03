@@ -10,7 +10,7 @@ func Router() *mux.Router {
 
 	router := mux.NewRouter()
 
-	//router.HandleFunc("/transactions", middleware.GetAllTransactions).Methods("GET", "OPTIONS")
+	router.HandleFunc("/transactions", middleware.GetAllTransactions).Methods("GET", "OPTIONS")
 	router.HandleFunc("/credit", middleware.CreateUserCredit).Methods("POST", "OPTIONS")
 	router.HandleFunc("/debit", middleware.CreateUserDebit).Methods("POST", "OPTIONS")
 

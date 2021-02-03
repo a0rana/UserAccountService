@@ -29,6 +29,12 @@ type responseDebit struct {
 	Message string `json:"message,omitempty"`
 }
 
+//response format
+type responseActivity struct {
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+}
+
 // create connection with postgres db
 func createConnection() *sql.DB {
 	// load .env file
@@ -55,6 +61,43 @@ func createConnection() *sql.DB {
 	fmt.Println("\nSuccessfully connected!")
 	// return the connection
 	return db
+}
+
+// Fetches activity of the user's debits and credits
+func GetAllTransactions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	var user models.User
+	var res responseActivity
+
+	// decode the json request to user
+	err := json.NewDecoder(r.Body).Decode(&user)
+	if err != nil {
+		res = responseActivity{
+			Success: false,
+			Message: fmt.Sprint("Unable to process the user's transaction history request. ", err.Error()),
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(res)
+		return
+	}
+
+	// get all the activities in the db
+	activities, err := getAllActivities(user)
+
+	if err != nil {
+		res = responseActivity{
+			Success: false,
+			Message: fmt.Sprint("Unable to process the user's transaction history request. ", err.Error()),
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(res)
+		return
+	}
+
+	// send all the users as response
+	json.NewEncoder(w).Encode(activities)
 }
 
 // CreateUserCredit create a user-credit in the postgres db
@@ -157,6 +200,50 @@ func CreateUserDebit(w http.ResponseWriter, r *http.Request) {
 }
 
 //------------------------- handler functions ---------------------
+
+//get all activities for the user
+func getAllActivities(user models.User) ([]models.UserActivity, error) {
+	// create the postgres db connection
+	db := createConnection()
+
+	// close the db connection
+	defer db.Close()
+
+	var activities []models.UserActivity
+
+	// create the select sql query
+	sqlStatement := `SELECT userid, created, iscredit, amount FROM tbl_Activity WHERE userid=$1 ORDER BY iscredit DESC, created ASC`
+
+	// execute the sql statement
+	rows, err := db.Query(sqlStatement, user.UserId)
+
+	if err != nil {
+		return activities, errors.New(fmt.Sprint("Unable to execute the query. ", err.Error()))
+	}
+
+	// close the statement
+	defer rows.Close()
+
+	// iterate over the rows
+	for rows.Next() {
+		var userActivity models.UserActivity
+
+		// unmarshal the row object to user
+		err = rows.Scan(&userActivity.UserId, &userActivity.Created, &userActivity.IsCredit, &userActivity.Amount)
+
+		if err != nil {
+			return activities, errors.New(fmt.Sprint("Unable to scan the row. ", err.Error()))
+		}
+
+		// append the user in the users slice
+		activities = append(activities, userActivity)
+
+	}
+
+	// return empty user on error
+	return activities, err
+}
+
 // inserts credit in the DB
 func insertUserCredit(userCredit models.UserCredit) (uint64, error) {
 	// create the postgres db connection
@@ -274,7 +361,7 @@ func insertUserDebit(userDebit models.UserDebit) error {
 		if rollbackError = tx.Rollback(); rollbackError != nil {
 			return errors.New(fmt.Sprint("unable to rollback. ", rollbackError.Error()))
 		}
-		return errors.New("all the credits have expired for the given user, cannot process further debits. please allocate new credit(s) for the user to resolve this issue")
+		return errors.New("some or all the credits have expired for the given user, cannot process further debits. please allocate new credit(s) for the user to resolve this issue")
 	}
 
 	if len(m) == 0 {
@@ -360,7 +447,6 @@ func canConsumeCredits(userDebit models.UserDebit, m []models.UserCredit) (bool,
 	 *   (iii) Any credit in between is consumed partially to achieve debit amount
 	 */
 	for i, credit := range m {
-		//credit.Processed = true
 		//consume fully
 		if remainingAmount >= credit.Amount {
 			remainingAmount = remainingAmount - credit.Amount
@@ -380,12 +466,6 @@ func canConsumeCredits(userDebit models.UserDebit, m []models.UserCredit) (bool,
 			break
 		}
 	}
-	//pass on processed credits only
-	/*for _, credit := range m {
-		if credit.Processed {
-			processedCredits = append(processedCredits, credit)
-		}
-	}*/
 	return true, m
 }
 
