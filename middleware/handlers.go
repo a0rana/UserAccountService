@@ -2,19 +2,26 @@ package middleware
 
 import (
 	"UserAccountService/models" // models package where User schema is defined
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/gob"
 	"encoding/json" // package to encode and decode the json into struct and vice versa
 	"errors"
 	"fmt"
+	"github.com/allegro/bigcache"
+	_ "github.com/allegro/bigcache"
 	"github.com/joho/godotenv" // package used to read the .env file
 	_ "github.com/lib/pq"      // postgres golang driver
 	"log"
 	"math"
 	"net/http" // used to access the request and response object of the api
 	"os"       // used to read the environment variable
+	"strings"
 	"time"
 )
+
+var cache *bigcache.BigCache
 
 //response format
 type responseCredit struct {
@@ -58,13 +65,27 @@ func createConnection() *sql.DB {
 		panic(err)
 	}
 
-	fmt.Println("\nSuccessfully connected!")
+	fmt.Println("Successfully connected to the database!")
 	// return the connection
 	return db
 }
 
+//create cache instance and return BigCache type
+func createCache() *bigcache.BigCache {
+	if cache == nil {
+		var initErr error
+		cache, initErr = bigcache.NewBigCache(bigcache.DefaultConfig(10 * time.Minute))
+		if initErr != nil {
+			log.Fatalf("Error creating cache %v", initErr)
+		}
+	}
+	return cache
+}
+
 // Fetches activity of the user's debits and credits
 func GetAllTransactions(w http.ResponseWriter, r *http.Request) {
+	cache = createCache()
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -73,8 +94,9 @@ func GetAllTransactions(w http.ResponseWriter, r *http.Request) {
 
 	limit := r.FormValue("limit")
 	afterId := r.FormValue("afterid")
+	url := r.URL.String()
 
-	fmt.Println(limit, afterId)
+	fmt.Println(fmt.Sprint("URL: ", url, ", param limit: ", limit, ", param afterid: ", afterId))
 
 	// decode the json request to user
 	err := json.NewDecoder(r.Body).Decode(&user)
@@ -88,21 +110,28 @@ func GetAllTransactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// get all the activities in the db
-	activities, err := getAllActivities(user, limit, afterId)
+	entry, cacheErr := cache.Get(fmt.Sprint(user.UserId, "_", url))
+	if cacheErr == nil {
+		fmt.Println("Found key in cache: ", fmt.Sprint(user.UserId, "_", url))
+		json.NewEncoder(w).Encode(decodeToUserActivity(entry))
+	} else {
+		// get all the activities in the db
+		activities, err := getAllActivities(user, limit, afterId)
 
-	if err != nil {
-		res = responseActivity{
-			Success: false,
-			Message: fmt.Sprint("Unable to process the user's transaction history request. ", err.Error()),
+		if err != nil {
+			res = responseActivity{
+				Success: false,
+				Message: fmt.Sprint("Unable to process the user's transaction history request. ", err.Error()),
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(res)
+			return
 		}
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(res)
-		return
+		cache.Set(fmt.Sprint(user.UserId, "_", url), encodeToBytes(activities))
+		fmt.Println("Setting cache with key: ", fmt.Sprint(user.UserId, "_", url))
+		// send all the users as response
+		json.NewEncoder(w).Encode(activities)
 	}
-
-	// send all the users as response
-	json.NewEncoder(w).Encode(activities)
 }
 
 // CreateUserCredit create a user-credit in the postgres db
@@ -144,6 +173,9 @@ func CreateUserCredit(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(res)
 		return
 	}
+
+	fmt.Println("\nCalling invalidate cache from CreateUserCredit")
+	invalidateCache(userCredit.UserId)
 
 	// format a response object
 	res = responseCredit{
@@ -194,6 +226,9 @@ func CreateUserDebit(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(res)
 		return
 	}
+
+	fmt.Println("\nCalling invalidate cache from CreateUserDebit")
+	invalidateCache(userDebit.UserId)
 
 	// format a response object
 	res = responseDebit{
@@ -490,4 +525,44 @@ func getTotalAmountInUserCredits(m []models.UserCredit) float64 {
 		totalAmount = totalAmount + credit.Amount
 	}
 	return totalAmount
+}
+
+func encodeToBytes(activity []models.UserActivity) []byte {
+	buf := bytes.Buffer{}
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(activity)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func decodeToUserActivity(s []byte) []models.UserActivity {
+	var activities []models.UserActivity
+	dec := gob.NewDecoder(bytes.NewReader(s))
+	err := dec.Decode(&activities)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return activities
+}
+
+func invalidateCache(user string) bool {
+	if len(user) == 0 {
+		return false
+	}
+	cache = createCache()
+	iterator := cache.Iterator()
+	for iterator.SetNext() {
+		current, err := iterator.Value()
+		if err != nil {
+			return false
+		}
+		if strings.HasPrefix(current.Key(), user) {
+			fmt.Println(fmt.Sprint("debug | invalidateCache | user: ", user, " removing key: ", current.Key()))
+			cache.Delete(current.Key())
+			continue
+		}
+	}
+	return true
 }
