@@ -42,3 +42,7 @@ CREATE TABLE tbl_UserCredits
     isexpired       BOOLEAN DEFAULT FALSE,
     PRIMARY KEY (userid, usercreditid)
 );
+
+INSERT INTO tbl_Users(fname, lanme, email, dob, mobile) VALUES('John', 'Doe', 'john.doe@gmail.com', '1987-11-10', '9994447878')
+INSERT INTO tbl_Users(fname, lanme, email, dob, mobile) VALUES('Jane', 'Doe', 'jane.doe@gmail.com', '1989-10-09', '9995557878')
+INSERT INTO tbl_Users(fname, lanme, email, dob, mobile) VALUES('Jonathan', 'Smith', 'jonathan.smith@gmail.com', '1988-08-09', '8885557878')

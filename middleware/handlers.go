@@ -21,22 +21,23 @@ import (
 	"time"
 )
 
+//cache variable
 var cache *bigcache.BigCache
 
-//response format
+//response format for Credit
 type responseCredit struct {
 	ID      uint64 `json:"id,omitempty"`
 	Success bool   `json:"success"`
 	Message string `json:"message,omitempty"`
 }
 
-//response format
+//response format for Debit
 type responseDebit struct {
 	Success bool   `json:"success"`
 	Message string `json:"message,omitempty"`
 }
 
-//response format
+//response format for Activity
 type responseActivity struct {
 	Success bool   `json:"success"`
 	Message string `json:"message,omitempty"`
@@ -92,8 +93,10 @@ func GetAllTransactions(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	var res responseActivity
 
+	//used for API pagination using limit and afterid
 	limit := r.FormValue("limit")
 	afterId := r.FormValue("afterid")
+	//used for creating the key in the cache
 	url := r.URL.String()
 
 	fmt.Println(fmt.Sprint("URL: ", url, ", param limit: ", limit, ", param afterid: ", afterId))
@@ -110,12 +113,13 @@ func GetAllTransactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	//check for an entry in cache first to reduce database load, format of the key is "userid_relative api url"
 	entry, cacheErr := cache.Get(fmt.Sprint(user.UserId, "_", url))
 	if cacheErr == nil {
 		fmt.Println("Found key in cache: ", fmt.Sprint(user.UserId, "_", url))
 		json.NewEncoder(w).Encode(decodeToUserActivity(entry))
 	} else {
-		// get all the activities in the db
+		// get all the activities from the db
 		activities, err := getAllActivities(user, limit, afterId)
 
 		if err != nil {
@@ -127,6 +131,7 @@ func GetAllTransactions(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(res)
 			return
 		}
+		//set cache back using the key, for improving latency on subsequent calls
 		cache.Set(fmt.Sprint(user.UserId, "_", url), encodeToBytes(activities))
 		fmt.Println("Setting cache with key: ", fmt.Sprint(user.UserId, "_", url))
 		// send all the users as response
@@ -175,6 +180,7 @@ func CreateUserCredit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Println("\nCalling invalidate cache from CreateUserCredit")
+	//invalidate the cache as new credit has been processed
 	invalidateCache(userCredit.UserId)
 
 	// format a response object
@@ -228,6 +234,7 @@ func CreateUserDebit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Println("\nCalling invalidate cache from CreateUserDebit")
+	//invalidate the cache as new debit has been processed
 	invalidateCache(userDebit.UserId)
 
 	// format a response object
@@ -479,6 +486,7 @@ func insertUserDebit(userDebit models.UserDebit) error {
 	return err
 }
 
+//function containing core logic to process debit from multiple credits based on priority and availability
 func canConsumeCredits(userDebit models.UserDebit, m []models.UserCredit) (bool, []models.UserCredit) {
 	//processedCredits := make([]models.UserCredit, 0)
 	debitAmount := userDebit.Amount
@@ -519,6 +527,7 @@ func canConsumeCredits(userDebit models.UserDebit, m []models.UserCredit) (bool,
 	return true, m
 }
 
+//function to calculate total amount present in credits(expired one's are already filtered out)
 func getTotalAmountInUserCredits(m []models.UserCredit) float64 {
 	totalAmount := 0.0
 	for _, credit := range m {
@@ -527,6 +536,7 @@ func getTotalAmountInUserCredits(m []models.UserCredit) float64 {
 	return totalAmount
 }
 
+//function to convert UserActivity slice to byte slice
 func encodeToBytes(activity []models.UserActivity) []byte {
 	buf := bytes.Buffer{}
 	enc := gob.NewEncoder(&buf)
@@ -537,6 +547,7 @@ func encodeToBytes(activity []models.UserActivity) []byte {
 	return buf.Bytes()
 }
 
+//function to convert []byte back to the []models.UserActivity
 func decodeToUserActivity(s []byte) []models.UserActivity {
 	var activities []models.UserActivity
 	dec := gob.NewDecoder(bytes.NewReader(s))
@@ -547,17 +558,21 @@ func decodeToUserActivity(s []byte) []models.UserActivity {
 	return activities
 }
 
+//function to invalidate the cache whenever we receive a POST call for credit or debit
+//as we need to pull the latest activities in subsequent transactions call
 func invalidateCache(user string) bool {
 	if len(user) == 0 {
 		return false
 	}
 	cache = createCache()
+	//create iterator for keys and values in cache
 	iterator := cache.Iterator()
 	for iterator.SetNext() {
 		current, err := iterator.Value()
 		if err != nil {
 			return false
 		}
+		//if cache key contains specific user id then remove it
 		if strings.HasPrefix(current.Key(), user) {
 			fmt.Println(fmt.Sprint("debug | invalidateCache | user: ", user, " removing key: ", current.Key()))
 			cache.Delete(current.Key())
