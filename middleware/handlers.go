@@ -52,8 +52,12 @@ func createConnection() *sql.DB {
 		log.Fatalf("Error loading .env file")
 	}
 
+	connectionString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		os.Getenv("POSTGRES_HOST"), os.Getenv("POSTGRES_PORT"), os.Getenv("POSTGRES_USER"),
+		os.Getenv("POSTGRES_PASSWORD"), os.Getenv("POSTGRES_DBNAME"), os.Getenv("POSTGRES_SSLMODE"))
+
 	// Open the connection
-	db, err := sql.Open("postgres", os.Getenv("POSTGRES_URL"))
+	db, err := sql.Open("postgres", connectionString)
 
 	if err != nil {
 		panic(err)
@@ -134,6 +138,16 @@ func GetAllTransactions(w http.ResponseWriter, r *http.Request) {
 		//set cache back using the key, for improving latency on subsequent calls
 		cache.Set(fmt.Sprint(user.UserId, "_", url), encodeToBytes(activities))
 		fmt.Println("Setting cache with key: ", fmt.Sprint(user.UserId, "_", url))
+
+		if len(activities) == 0 {
+			res = responseActivity{
+				Success: true,
+				Message: fmt.Sprint("Cannot find any transaction history for given user. "),
+			}
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(res)
+			return
+		}
 		// send all the users as response
 		json.NewEncoder(w).Encode(activities)
 	}
