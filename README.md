@@ -42,7 +42,9 @@ activities for all the transactions happened so far.
    Pagination is supported for this endpoint using limit and afterid params:
    <br/>
    Request URI will look like: /transactions?limit=2&afterid=1
+   <br/>
    Above request will provide 2 JSON objects on each call, with tranid > 1. It's the responsibility of the caller to keep track of last tranid sent to the server    for paginating the results. 
+   <br/>
    By using pagination and caching together we will be able to reduce load on the database server. We are also invalidating the cache when any credit or debit is posted for a user, so that we can fetch the latest user activities.
 
 **Credit Expiry Job**
