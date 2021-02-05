@@ -1,7 +1,7 @@
 package router
 
 import (
-	"UserAccountService/middleware"
+	"github.com/a0rana/UserAccountService/middleware"
 	"github.com/gorilla/mux"
 )
 

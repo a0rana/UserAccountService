@@ -1,10 +1,10 @@
 package main
 
 import (
-	"UserAccountService/router"
 	"bytes"
 	"database/sql"
 	"fmt"
+	"github.com/a0rana/UserAccountService/router"
 	"github.com/joho/godotenv"
 	"log"
 	"net/http"

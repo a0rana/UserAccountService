@@ -39,11 +39,13 @@ activities for all the transactions happened so far.
    <br/>
    Response: `[{"userid":"7507decb-0f2d-4510-8202-c78699ed3153","created":"2021-02-04T21:22:18.856783Z","iscredit":true,"amount":5},{"userid":"7507decb-0f2d-4510-8202-c78699ed3153","created":"2021-02-04T21:22:30.202332Z","iscredit":false,"amount":1},{"userid":"7507decb-0f2d-4510-8202-c78699ed3153","created":"2021-02-04T21:22:31.791192Z","iscredit":false,"amount":1}]`
    
-   Pagination is supported for this endpoint using limit and afterid params:
+   Pagination is supported for this endpoint using limit and offset params:
    <br/>
-   Request URI will look like: /transactions?limit=2&afterid=1
+   Request URI will look like: /transactions?limit=2&offset=1
    <br/>
-   Above request will provide 2 JSON objects on each call, with tranid > 1. It's the responsibility of the caller to keep track of last tranid sent to the server    for paginating the results. 
+   Above request will provide 2 JSON objects on each call, with tranid > 1. It's the responsibility of the caller to keep track of last tranid sent to the server for paginating the results.
+   <br/>
+   Default values for offset and limit is 0 and 20(if values not provided in the URI).
    <br/>
    By using pagination and caching together we will be able to reduce load on the database server. We are also invalidating the cache when any credit or debit is posted for a user, so that we can fetch the latest user activities.
 

@@ -1,8 +1,8 @@
 package main
 
 import (
-	"UserAccountService/router"
 	"fmt"
+	"github.com/a0rana/UserAccountService/router"
 	"log"
 	"net/http"
 )

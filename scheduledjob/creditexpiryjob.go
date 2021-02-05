@@ -1,11 +1,11 @@
 package main
 
 import (
-	"CreditExpiryJob/models"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/a0rana/UserAccountService/models"
 	"github.com/jasonlvhit/gocron"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq" // postgres golang driver

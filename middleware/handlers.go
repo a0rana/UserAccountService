@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"UserAccountService/models" // models package where User schema is defined
 	"bytes"
 	"context"
 	"database/sql"
@@ -9,6 +8,7 @@ import (
 	"encoding/json" // package to encode and decode the json into struct and vice versa
 	"errors"
 	"fmt"
+	"github.com/a0rana/UserAccountService/models" // models package where User schema is defined
 	"github.com/allegro/bigcache"
 	_ "github.com/allegro/bigcache"
 	"github.com/joho/godotenv" // package used to read the .env file
@@ -97,13 +97,13 @@ func GetAllTransactions(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	var res responseActivity
 
-	//used for API pagination using limit and afterid
+	//used for API pagination using limit and offset
 	limit := r.FormValue("limit")
-	afterId := r.FormValue("afterid")
+	offset := r.FormValue("offset")
 	//used for creating the key in the cache
 	url := r.URL.String()
 
-	fmt.Println(fmt.Sprint("URL: ", url, ", param limit: ", limit, ", param afterid: ", afterId))
+	fmt.Println(fmt.Sprint("URL: ", url, ", param limit: ", limit, ", param offset: ", offset))
 
 	// decode the json request to user
 	err := json.NewDecoder(r.Body).Decode(&user)
@@ -124,7 +124,7 @@ func GetAllTransactions(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(decodeToUserActivity(entry))
 	} else {
 		// get all the activities from the db
-		activities, err := getAllActivities(user, limit, afterId)
+		activities, err := getAllActivities(user, limit, offset)
 
 		if err != nil {
 			res = responseActivity{
@@ -263,7 +263,7 @@ func CreateUserDebit(w http.ResponseWriter, r *http.Request) {
 //------------------------- handler functions ---------------------
 
 //get all activities for the user
-func getAllActivities(user models.User, limit string, afterId string) ([]models.UserActivity, error) {
+func getAllActivities(user models.User, limit string, offset string) ([]models.UserActivity, error) {
 	// create the postgres db connection
 	db := createConnection()
 
@@ -271,22 +271,21 @@ func getAllActivities(user models.User, limit string, afterId string) ([]models.
 	defer db.Close()
 
 	var activities []models.UserActivity
-	var sqlStatement string
 
-	if len(afterId) == 0 && len(limit) == 0 {
-		sqlStatement = `SELECT userid, created, iscredit, amount FROM tbl_Activity WHERE userid=$1 ORDER BY iscredit DESC, created ASC`
+	if len(offset) == 0 {
+		offset = "0"
 	}
-	if len(afterId) > 0 && len(limit) > 0 {
-		sqlStatement = fmt.Sprint(`SELECT userid, created, iscredit, amount FROM tbl_Activity WHERE userid=$1 AND tranid > `, afterId, ` ORDER BY iscredit DESC, created ASC LIMIT `, limit)
+	if len(limit) == 0 {
+		limit = "20"
 	}
-	if len(afterId) > 0 && len(limit) == 0 {
-		sqlStatement = fmt.Sprint(`SELECT userid, created, iscredit, amount FROM tbl_Activity WHERE userid=$1 AND tranid > `, afterId, ` ORDER BY iscredit DESC, created ASC`)
+	//by default show 20 results from offset 0
+	if len(offset) == 0 && len(limit) == 0 {
+		offset = "0"
+		limit = "20"
 	}
-	if len(limit) > 0 && len(afterId) == 0 {
-		sqlStatement = fmt.Sprint(`SELECT userid, created, iscredit, amount FROM tbl_Activity WHERE userid=$1 ORDER BY iscredit DESC, created ASC LIMIT `, limit)
-	}
+
 	// execute the sql statement
-	rows, err := db.Query(sqlStatement, user.UserId)
+	rows, err := db.Query(models.UserActivitySelectStatement, user.UserId, offset, limit)
 
 	if err != nil {
 		return activities, errors.New(fmt.Sprint("Unable to execute the query. ", err.Error()))
@@ -323,14 +322,6 @@ func insertUserCredit(userCredit models.UserCredit) (uint64, error) {
 	// close the db connection
 	defer db.Close()
 
-	// create the insert sql query
-	// returning userid will return the id of the inserted user
-	userCreditSqlStatement := `INSERT INTO tbl_UserCredits(userid, amount, transactiontype, priority, expiry)
- 					 VALUES ($1, $2, $3, $4, $5) RETURNING usercreditid`
-
-	activitySqlStatement := `INSERT INTO tbl_Activity(userid, iscredit, amount, usercreditid)
- 					 VALUES ($1, $2, $3, $4)`
-
 	// the inserted id will store in this id
 	var userCreditId uint64
 
@@ -340,7 +331,7 @@ func insertUserCredit(userCredit models.UserCredit) (uint64, error) {
 	if err != nil {
 		return 0, errors.New(err.Error())
 	}
-	err = tx.QueryRow(userCreditSqlStatement, userCredit.UserId, userCredit.Amount, userCredit.TransactionType,
+	err = tx.QueryRow(models.UserCreditInsertStatement, userCredit.UserId, userCredit.Amount, userCredit.TransactionType,
 		userCredit.Priority, userCredit.Expiry).Scan(&userCreditId)
 
 	if err != nil {
@@ -349,7 +340,7 @@ func insertUserCredit(userCredit models.UserCredit) (uint64, error) {
 	}
 
 	// The next query is handled similarly
-	_, err = tx.ExecContext(ctx, activitySqlStatement, userCredit.UserId, true, userCredit.Amount, userCreditId)
+	_, err = tx.ExecContext(ctx, models.UserActivityInsertStatement, userCredit.UserId, true, userCredit.Amount, userCreditId)
 	if err != nil {
 		tx.Rollback()
 		return 0, errors.New(err.Error())
@@ -378,10 +369,6 @@ func insertUserDebit(userDebit models.UserDebit) error {
 	defer db.Close()
 
 	var rollbackError error
-	// create the insert sql query
-	// returning userid will return the id of the inserted user
-	userCreditSqlStatement := `SELECT userid, usercreditid, amount, transactiontype, priority, expiry FROM tbl_UserCredits WHERE userid=$1 AND isexpired=false AND amount>0 ORDER BY priority DESC`
-
 	// Create a new context, and begin a transaction
 	ctx := context.Background()
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
@@ -389,7 +376,7 @@ func insertUserDebit(userDebit models.UserDebit) error {
 		return errors.New(err.Error())
 	}
 	var rows *sql.Rows
-	rows, err = tx.Query(userCreditSqlStatement, userDebit.UserId)
+	rows, err = tx.Query(models.UserCreditSelectStatement, userDebit.UserId)
 
 	if err != nil {
 		if rollbackError = tx.Rollback(); rollbackError != nil {
@@ -457,7 +444,7 @@ func insertUserDebit(userDebit models.UserDebit) error {
 	}
 
 	var stmt *sql.Stmt
-	stmt, err = tx.PrepareContext(ctx, `UPDATE tbl_UserCredits SET amount=$1, updated=(NOW() AT TIME ZONE 'UTC') WHERE userid=$2 AND usercreditid=$3`)
+	stmt, err = tx.PrepareContext(ctx, models.UserCreditUpdateStatement)
 	if err != nil {
 		return errors.New(err.Error())
 	}
@@ -472,7 +459,7 @@ func insertUserDebit(userDebit models.UserDebit) error {
 		}
 	}
 
-	stmt, err = tx.PrepareContext(ctx, `INSERT INTO tbl_Activity(userid, iscredit, amount, usercreditid) VALUES($1, $2, $3, $4)`)
+	stmt, err = tx.PrepareContext(ctx, models.UserActivityInsertStatement)
 	if err != nil {
 		return errors.New(err.Error())
 	}
