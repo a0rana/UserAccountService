@@ -17,6 +17,7 @@ activities for all the transactions happened so far.
 
 **Endpoints Request/Response Format(example):**
 1. POST /credit 
+   <br/>
    Request: `{"userid":"7507decb-0f2d-4510-8202-c78699ed3153","amount":5,"transactiontype":"Gift Card","priority":5,"expiry":"2021-10-19 10:23:54"}` 
    <br/>
    Response:
@@ -24,6 +25,7 @@ activities for all the transactions happened so far.
    For error use cases: `{"success":false,"message":"Unable to process the user's credit."}`
 
 2. POST /debit
+   <br/>
    Request: `{"userid":"7507decb-0f2d-4510-8202-c78699ed3153","amount":5}`
    <br/>
    Response:
@@ -32,6 +34,7 @@ activities for all the transactions happened so far.
    We are handling expired credits during processing the debits(ignore those) and also we have a scheduled job to mark them as expired.
 
 3. GET /transactions
+   <br/>
    Request: `{"userid":"7507decb-0f2d-4510-8202-c78699ed3153"}`
    <br/>
    Response: `[{"userid":"7507decb-0f2d-4510-8202-c78699ed3153","created":"2021-02-04T21:22:18.856783Z","iscredit":true,"amount":5},{"userid":"7507decb-0f2d-4510-8202-c78699ed3153","created":"2021-02-04T21:22:30.202332Z","iscredit":false,"amount":1},{"userid":"7507decb-0f2d-4510-8202-c78699ed3153","created":"2021-02-04T21:22:31.791192Z","iscredit":false,"amount":1}]`
