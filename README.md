@@ -74,7 +74,7 @@ POSTGRES_SSLMODE="disable"
 2. Make sure to update "POSTGRES_DBNAME" param value in ".env" file to "TestUserAccount"(test database).
 3. Run "go test -v" in terminal(in same directory)
 
-**Future enhancement for better performance that can be implemented.**
+**Future enhancement for better performance that can be implemented:**
 1) Partitioning table: We can partition the table in future based on userid and created timestamp(for a period of month etc). 
 2) Moving user credits to history table: We can move expired user credits to a separate archive table for the given user
    so that the user credit table size does not largely increase.

@@ -34,7 +34,7 @@ func TestEmptyActivity(t *testing.T) {
 	response := executeRequest(req)
 
 	checkResponseCode(t, http.StatusOK, response.Code)
-
+	//TODO: Can later parse the json string to a struct type and validate test cases by matching the struct members, for now just did string matching
 	if body := response.Body.String(); !strings.Contains(body, "Cannot find any transaction history for given user") {
 		t.Errorf("Expected no activity for a user. Got %s", body)
 	}
@@ -48,7 +48,7 @@ func TestPostUserCredit(t *testing.T) {
 	response := executeRequest(req)
 
 	checkResponseCode(t, http.StatusOK, response.Code)
-
+	//TODO: Can later parse the json string to a struct type and validate test cases by matching the struct members, for now just did string matching
 	if body := response.Body.String(); !strings.Contains(body, "User credit created successfully") {
 		t.Errorf("Expected user credit to be created successfully. Got %s", body)
 	}
@@ -62,7 +62,7 @@ func TestPostUserDebit(t *testing.T) {
 	response := executeRequest(req)
 
 	checkResponseCode(t, http.StatusOK, response.Code)
-
+	//TODO: Can later parse the json string to a struct type and validate test cases by matching the struct members, for now just did string matching
 	if body := response.Body.String(); !strings.Contains(body, "User debit has been processed successfully") {
 		t.Errorf("Expected user debit to be created successfully. Got %s", body)
 	}
@@ -76,7 +76,7 @@ func TestUserActivity(t *testing.T) {
 	response := executeRequest(req)
 
 	checkResponseCode(t, http.StatusOK, response.Code)
-
+	//TODO: Can later parse the json string to a struct type and validate test cases by matching the struct members, for now just did string matching
 	if body := response.Body.String(); !strings.Contains(body, userid) {
 		t.Errorf("Expected activity for the user. Got %s", body)
 	}
