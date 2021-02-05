@@ -8,6 +8,7 @@ activities for all the transactions happened so far.
 2. Gorilla/mux: Implements a request router and dispatcher for matching incoming requests to their respective handler.
 3. GoDotEnv: Loads env vars from a .env file
 4. Pq: Pure Go Postgres driver for the database/sql package.
+5. goCron: Golang job scheduling package which lets you run Go functions periodically at pre-determined interval.
 
 **Endpoints Exposed:**
 1. POST /credit : To process credit for the user.
@@ -35,6 +36,12 @@ activities for all the transactions happened so far.
    Request URI will look like: /transactions?limit=2&afterid=1
    Above request will provide 2 JSON objects on each call, with tranid > 1. It's the responsibility of the caller to keep track of last tranid sent to the server for paginating the results. 
    ``By using pagination and caching together we will be able to reduce load on the database server. We are also invalidating the cache when any credit or debit is posted for a user, so that we can fetch the latest user activities.
+
+**Credit Expiry Job**
+
+Placed in "./scheduledjob/creditexpiryjob.go"
+This job uses a cron scheduler to run it twice every day(periodically) and contains logic to mark user credits as expired if expiry date is before or equal to the current datetime(when job runs).
+Should be run as a separate standalone project(will need to copy ".env" file and "./models/usercredit.go" model).
 
 **SQL Database used:** PostgreSQL 13.1
 

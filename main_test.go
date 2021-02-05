@@ -155,7 +155,6 @@ func getUser() string {
 
 //function to insert a single user in the table
 func createUser() {
-	fmt.Print("create user called")
 	for _, query := range getUserInsertStatement() {
 		if _, err := db.Exec(query); err != nil {
 			log.Fatal(err)
