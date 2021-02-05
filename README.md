@@ -3,8 +3,6 @@
 Assignment to create a REST API in Go language, which will process credits and debits of a user and will also provide the 
 activities for all the transactions happened so far.
 
-**SQL Database used:** PostgreSQL 13.1
-
 **Go Packages used:**
 1. BigCache: For caching the responses, in order to reduce latency and database hits.
 2. Gorilla/mux: Implements a request router and dispatcher for matching incoming requests to their respective handler.
@@ -36,7 +34,15 @@ activities for all the transactions happened so far.
    Pagination is supported for this endpoint using limit and afterid params:
    Request URI will look like: /transactions?limit=2&afterid=1
    Above request will provide 2 JSON objects on each call, with tranid > 1. It's the responsibility of the caller to keep track of last tranid sent to the server for paginating the results. 
-   ``By using pagination and caching together we will be able to reduce load on the database server. We are also invalidating the cache when any credit or debit is posted for a user, so that we can fetch latest user activities. 
+   ``By using pagination and caching together we will be able to reduce load on the database server. We are also invalidating the cache when any credit or debit is posted for a user, so that we can fetch latest user activities.
+
+**SQL Database used:** PostgreSQL 13.1
+
+SQL script to create datbase objects included in "./postgresql/useraccount.sql"
+Tables:
+1. tbl_Users: Containing information of the user, userid is of type uuid.
+2. tbl_UserCredits: Holds user credit info, stores updated credits after the debit transaction has been executed.
+3. tbl_Activity: Contains history of user credits and debits.
 
 **Assumption/Limitation(s):**
 1. REST/JSON API
@@ -49,13 +55,14 @@ activities for all the transactions happened so far.
 
 **Setup:**
 1. Clone the repo in local.
-2. Create ".env" file inside cloned directory with below params:
-   POSTGRES_HOST="localhost"
-   POSTGRES_PORT="5432"
-   POSTGRES_USER="XXXXX"
-   POSTGRES_PASSWORD="XXXXX"
-   POSTGRES_DBNAME="UserAccount"
-   POSTGRES_SSLMODE="disable"
+2. Create ".env" file inside cloned directory with below params:<br/>
+POSTGRES_HOST="localhost"<br/>
+POSTGRES_PORT="5432"<br/>
+POSTGRES_USER="XXXXX"<br/>
+POSTGRES_PASSWORD="XXXXX"<br/>
+POSTGRES_DBNAME="UserAccount"<br/>
+POSTGRES_SSLMODE="disable"
+
 3. Execute "go run main.go" in terminal to start the rest api in local machine at port 8080
 4. Use any REST client(like Postman) to make API calls.
 
