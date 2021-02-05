@@ -27,6 +27,7 @@ activities for all the transactions happened so far.
    Response:
    For success scenarios: `{"success":true,"message":"User debit has been processed successfully"}`
    For error use cases: `{"success":false,"message":"Unable to process user's debit request."}`
+   We are handling expired credits during processing the debits(ignore those) and also we have a scheduled job to mark them as expired.
 
 3. GET /transactions
    Request: `{"userid":"7507decb-0f2d-4510-8202-c78699ed3153"}`
