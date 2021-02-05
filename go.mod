@@ -1,4 +1,4 @@
-module UserAccountService
+module github.com/a0rana/UserAccountService
 
 go 1.15
 
