@@ -336,7 +336,7 @@ func insertUserCredit(userCredit models.UserCredit) (uint64, error) {
 
 	// Create a new context, and begin a transaction
 	ctx := context.Background()
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return 0, errors.New(err.Error())
 	}
@@ -384,7 +384,7 @@ func insertUserDebit(userDebit models.UserDebit) error {
 
 	// Create a new context, and begin a transaction
 	ctx := context.Background()
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return errors.New(err.Error())
 	}
