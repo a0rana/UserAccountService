@@ -50,7 +50,9 @@ Tables:
 3. Considering we might need the details about the user credit for which debit was done, the tables in the database are designed in that way.
 4. Unit test cases needs to be implemented.
 5. Assuming that the PostgreSQL instance will already have two databases:
+   
    a. UserAccount: Production database used by the REST API.
+
    b. TestUserAccount: Sandbox database used for integration testing.
 
 **Setup:**
