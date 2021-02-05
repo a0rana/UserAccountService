@@ -34,11 +34,11 @@ activities for all the transactions happened so far.
    Pagination is supported for this endpoint using limit and afterid params:
    Request URI will look like: /transactions?limit=2&afterid=1
    Above request will provide 2 JSON objects on each call, with tranid > 1. It's the responsibility of the caller to keep track of last tranid sent to the server for paginating the results. 
-   ``By using pagination and caching together we will be able to reduce load on the database server. We are also invalidating the cache when any credit or debit is posted for a user, so that we can fetch latest user activities.
+   ``By using pagination and caching together we will be able to reduce load on the database server. We are also invalidating the cache when any credit or debit is posted for a user, so that we can fetch the latest user activities.
 
 **SQL Database used:** PostgreSQL 13.1
 
-SQL script to create datbase objects included in "./postgresql/useraccount.sql"
+SQL script to create database objects included in "./postgresql/useraccount.sql"
 Tables:
 1. tbl_Users: Containing information of the user, userid is of type uuid.
 2. tbl_UserCredits: Holds user credit info, stores updated credits after the debit transaction has been executed.
@@ -47,7 +47,7 @@ Tables:
 **Assumption/Limitation(s):**
 1. REST/JSON API
 2. Authentication/Authorization mechanism have not been considered in this assignment.
-3. Considering we might need the details about the user credit for which debit was done, the tables in db are desgined in that way.
+3. Considering we might need the details about the user credit for which debit was done, the tables in the database are designed in that way.
 4. Unit test cases needs to be implemented.
 5. Assuming that the PostgreSQL instance will already have two databases:
    a. UserAccount: Production database used by the REST API.
@@ -63,7 +63,7 @@ POSTGRES_PASSWORD="XXXXX"<br/>
 POSTGRES_DBNAME="UserAccount"<br/>
 POSTGRES_SSLMODE="disable"
 
-3. Execute "go run main.go" in terminal to start the rest api in local machine at port 8080
+3. Execute "go run main.go" in terminal to start the rest api in the local machine at port 8080
 4. Use any REST client(like Postman) to make API calls.
 
 
