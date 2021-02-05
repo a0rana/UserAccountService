@@ -18,12 +18,14 @@ activities for all the transactions happened so far.
 **Endpoints Request/Response Format(example):**
 1. POST /credit 
    Request: `{"userid":"7507decb-0f2d-4510-8202-c78699ed3153","amount":5,"transactiontype":"Gift Card","priority":5,"expiry":"2021-10-19 10:23:54"}` 
+   <br/>
    Response:
    For success scenarios: `{"id":11,"success":true,"message":"User credit created successfully"}`
    For error use cases: `{"success":false,"message":"Unable to process the user's credit."}`
 
 2. POST /debit
    Request: `{"userid":"7507decb-0f2d-4510-8202-c78699ed3153","amount":5}`
+   <br/>
    Response:
    For success scenarios: `{"success":true,"message":"User debit has been processed successfully"}`
    For error use cases: `{"success":false,"message":"Unable to process user's debit request."}`
@@ -31,11 +33,13 @@ activities for all the transactions happened so far.
 
 3. GET /transactions
    Request: `{"userid":"7507decb-0f2d-4510-8202-c78699ed3153"}`
+   <br/>
    Response: `[{"userid":"7507decb-0f2d-4510-8202-c78699ed3153","created":"2021-02-04T21:22:18.856783Z","iscredit":true,"amount":5},{"userid":"7507decb-0f2d-4510-8202-c78699ed3153","created":"2021-02-04T21:22:30.202332Z","iscredit":false,"amount":1},{"userid":"7507decb-0f2d-4510-8202-c78699ed3153","created":"2021-02-04T21:22:31.791192Z","iscredit":false,"amount":1}]`
    
    Pagination is supported for this endpoint using limit and afterid params:
    Request URI will look like: /transactions?limit=2&afterid=1
-   Above request will provide 2 JSON objects on each call, with tranid > 1. It's the responsibility of the caller to keep track of last tranid sent to the server for paginating the results. 
+   Above request will provide 2 JSON objects on each call, with tranid > 
+   1. It's the responsibility of the caller to keep track of last tranid sent to the server for paginating the results. 
    ``By using pagination and caching together we will be able to reduce load on the database server. We are also invalidating the cache when any credit or debit is posted for a user, so that we can fetch the latest user activities.
 
 **Credit Expiry Job**
